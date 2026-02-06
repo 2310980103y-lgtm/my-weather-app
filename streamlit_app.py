@@ -3,49 +3,53 @@ import datetime as dt
 import requests
 import plotly.graph_objects as go
 
-# --- 1. 設定 & セッション保持 (全設定を完全維持) ---
+# --- 1. アプリとしての基本設定 (PWA対応) ---
+st.set_page_config(
+    page_title="RainCall+",
+    page_icon="☔",
+    layout="centered"
+)
+
+# スマホの「アプリモード」を有効にするメタタグ
+st.markdown("""
+    <head>
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <link rel="manifest" href="/manifest.json">
+    </head>
+""", unsafe_allow_html=True)
+
+# --- 2. 設定 & セッション保持 ---
 LOCS = {
-    "広島": {"lat": 34.38, "lon": 132.45},
-    "東京": {"lat": 35.68, "lon": 139.69},
-    "札幌": {"lat": 43.06, "lon": 141.34},
-    "大阪": {"lat": 34.69, "lon": 135.5},
-    "福岡": {"lat": 33.59, "lon": 130.4},
-    "那覇": {"lat": 26.21, "lon": 127.68}
+    "広島": {"lat": 34.38, "lon": 132.45}, "東京": {"lat": 35.68, "lon": 139.69},
+    "札幌": {"lat": 43.06, "lon": 141.34}, "大阪": {"lat": 34.69, "lon": 135.5},
+    "福岡": {"lat": 33.59, "lon": 130.4}, "那覇": {"lat": 26.21, "lon": 127.68}
 }
 
-# 初回起動時のデフォルト設定
 conf = {
-    "loc": "広島", 
-    "threshold": 30, 
-    "vibrate": True, 
-    "complete": False, 
-    "selected_day": 0, 
-    "time_morning": dt.time(7,0), 
-    "time_lunch": dt.time(12,0), 
-    "time_evening": dt.time(18,0)
+    "loc": "広島", "threshold": 30, "vibrate": True, 
+    "complete": False, "selected_day": 0,
+    "time_morning": dt.time(7,0), "time_lunch": dt.time(12,0), "time_evening": dt.time(18,0)
 }
-
 for k, v in conf.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# --- 2. データ取得 ---
+# --- 3. データ取得 ---
 c = LOCS[st.session_state.loc]
-# 現在の気温(current)と予報データを一括取得
 api_url = f"https://api.open-meteo.com/v1/forecast?latitude={c['lat']}&longitude={c['lon']}&current=temperature_2m&hourly=precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia/Tokyo"
 res = requests.get(api_url).json()
 
 w_code = res["daily"]["weather_code"][st.session_state.selected_day]
 current_temp = res["current"]["temperature_2m"]
 
-# --- 3. アラートロジック (完了ボタン未押下なら鳴り続ける) ---
+# --- 4. アラートロジック ---
 h_list = [st.session_state.time_morning.hour, st.session_state.time_lunch.hour, st.session_state.time_evening.hour]
-# 設定した3つの時間帯の降水確率を確認
-probs_to_check = [res["hourly"]["precipitation_probability"][i] for i in h_list]
-max_prob = max(probs_to_check)
+probs = [res["hourly"]["precipitation_probability"][i] for i in h_list]
+max_prob = max(probs)
 alert_active = st.session_state.selected_day == 0 and max_prob >= st.session_state.threshold and not st.session_state.complete and st.session_state.vibrate
 
-# 画面を開いている間、2秒おきにバイブレーションを要求するJS
+# 振動JS (一度画面を触ると発動)
 vibrate_script = """
 <script>
 const vib = () => { if ("vibrate" in navigator) { navigator.vibrate([500, 200, 500]); } };
@@ -53,95 +57,30 @@ const interval = setInterval(vib, 2000);
 </script>
 """ if alert_active else ""
 
-# --- 4. デザイン (背景切り替え & 視認性) ---
-if w_code >= 51: # 雨
-    bg = "https://images.unsplash.com/photo-1428592953211-077101b2021b?q=80&w=2000"
-elif 1 <= w_code <= 48: # 曇り
-    bg = "https://images.unsplash.com/photo-1499346030926-9a72daac6c63?q=80&w=2000"
-else: # 晴れ
-    bg = "https://images.unsplash.com/photo-1544933863-482c6cdcd5d1?q=80&w=2000"
-
+# --- 5. デザイン ---
 st.markdown(f"""
 <style>
     [data-testid="stAppViewContainer"] {{ 
-        background: linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.25)), url("{bg}&sig={st.session_state.selected_day}"); 
-        background-size: cover; background-position: center; 
+        background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url("https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1000"); 
+        background-size: cover; 
     }}
-    .main .block-container {{ 
-        background: rgba(10, 15, 20, 0.9); border-radius: 20px; padding: 1.5rem; color: white; 
-        backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.1); margin-top: 1rem; 
-    }}
-    [data-testid="stMetricValue"] {{ color: #40E0D0 !important; font-weight: 900 !important; }}
-    .stButton>button {{ background: rgba(255,255,255,0.08); color: white !important; border-radius: 10px; font-size: 0.75rem; width: 100%; }}
-    .current-temp-box {{ text-align: center; background: rgba(255,255,255,0.05); border-radius: 15px; padding: 5px; margin-bottom: 15px; border: 1px solid rgba(64,224,208,0.3); }}
+    .main .block-container {{ background: rgba(0,0,0,0.7); border-radius: 20px; color: white; backdrop-filter: blur(10px); }}
 </style>
 {vibrate_script}
 """, unsafe_allow_html=True)
 
-# --- 5. UI本体 ---
-page = st.sidebar.radio("Menu", ["🏠 ホーム", "⚙️ 設定"])
-
-if page == "🏠 ホーム":
-    st.markdown(f"<h2 style='text-align:center; margin:0;'>RainCall+</h2>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align:center; color:#40E0D0; font-weight:bold; margin-bottom:10px;'>📍 {st.session_state.loc} / {res['daily']['time'][st.session_state.selected_day][5:].replace('-','/')}</p>", unsafe_allow_html=True)
-
-    # 現在の気温 (今日を選択中のみ表示)
-    if st.session_state.selected_day == 0:
-        st.markdown(f"<div class='current-temp-box'><p style='font-size:0.8rem; opacity:0.7; margin:0;'>NOW</p><h1 style='color:#40E0D0; margin:0; font-size:2.5rem;'>{current_temp}°</h1></div>", unsafe_allow_html=True)
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("最高", f"{res['daily']['temperature_2m_max'][st.session_state.selected_day]}°")
-    c2.metric("雨率", f"{res['daily']['precipitation_probability_max'][st.session_state.selected_day]}%")
-    c3.metric("最低", f"{res['daily']['temperature_2m_min'][st.session_state.selected_day]}°")
-
-    # グラフ (24時間の推移)
-    h_idx = st.session_state.selected_day * 24
-    fig = go.Figure(go.Scatter(
-        x=[f"{i}h" for i in range(24)], 
-        y=res["hourly"]["precipitation_probability"][h_idx:h_idx+24], 
-        mode='lines+markers', 
-        line=dict(color='#40E0D0', width=3), 
-        marker=dict(size=5, color='white'), 
-        fill='tozeroy', 
-        fillcolor='rgba(64, 224, 208, 0.1)'
-    ))
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-        height=160, margin=dict(l=0,r=0,t=10,b=0), 
-        xaxis=dict(tickfont=dict(color='white', weight='bold'), dtick=6, showgrid=False), 
-        yaxis=dict(range=[0,105], showgrid=True, gridcolor='rgba(255,255,255,0.05)', tickfont=dict(color='white'))
-    )
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
-    # アラート表示
-    if alert_active:
-        st.error(f"⚠️ 傘が必要です！")
-        if st.button("✅ 準備完了（アラート停止）"):
-            st.session_state.complete = True
-            st.rerun()
-    elif st.session_state.complete and st.session_state.selected_day == 0:
-        st.success("😊 いってらっしゃい！")
-
-    st.markdown("---")
-    # 週間予報 (気温入りボタン)
-    cols = st.columns(7)
-    for i in range(7):
-        d_str = res["daily"]["time"][i][5:].replace('-','/')
-        icon = "☀️" if res["daily"]["weather_code"][i] == 0 else "☔" if res["daily"]["weather_code"][i] >= 51 else "☁️"
-        t_max, t_min = res["daily"]["temperature_2m_max"][i], res["daily"]["temperature_2m_min"][i]
-        if cols[i].button(f"{d_str}\n{icon}\n{t_max}°\n{t_min}°", key=f"d{i}"):
-            st.session_state.selected_day = i
-            st.rerun()
-
-else:
-    # 設定画面
-    st.markdown("### ⚙️ 設定")
-    st.session_state.loc = st.selectbox("地域", list(LOCS.keys()))
-    st.session_state.threshold = st.slider("しきい値(%)", 0, 100, st.session_state.threshold)
-    st.session_state.vibrate = st.toggle("振動通知", st.session_state.vibrate)
-    st.session_state.time_morning = st.time_input("朝のチェック", st.session_state.time_morning)
-    st.session_state.time_lunch = st.time_input("昼のチェック", st.session_state.time_lunch)
-    st.session_state.time_evening = st.time_input("夜のチェック", st.session_state.time_evening)
-    if st.button("設定をリセット"):
-        st.session_state.complete = False
+# --- 6. UI ---
+st.title("☔ RainCall+")
+if alert_active:
+    st.error(f"⚠️ 雨の予報です！傘を忘れずに。")
+    if st.button("✅ 準備完了（アラート停止）"):
+        st.session_state.complete = True
         st.rerun()
+
+st.metric("現在の気温", f"{current_temp}°")
+st.write(f"📍 {st.session_state.loc} の予報")
+
+# グラフ
+fig = go.Figure(go.Scatter(x=[f"{i}h" for i in range(24)], y=res["hourly"]["precipitation_probability"][:24], fill='tozeroy'))
+fig.update_layout(height=200, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color="white"))
+st.plotly_chart(fig, use_container_width=True)
