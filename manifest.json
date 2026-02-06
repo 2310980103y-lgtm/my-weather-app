@@ -1,0 +1,15 @@
+{
+  "name": "RainCall Plus",
+  "short_name": "RainCall+",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#40E0D0",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1163/1163624.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
