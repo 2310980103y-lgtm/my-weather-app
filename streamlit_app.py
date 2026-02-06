@@ -1,4 +1,15 @@
 import streamlit as st
+# (中略)
+
+# --- ここを一番上（importのすぐ後）に追加 ---
+st.markdown("""
+    <head>
+        <link rel="manifest" href="/manifest.json">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    </head>
+""", unsafe_allow_html=True)
+import streamlit as st
 import datetime as dt
 import requests
 import plotly.graph_objects as go
