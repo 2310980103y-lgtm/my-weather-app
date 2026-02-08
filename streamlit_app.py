@@ -28,7 +28,7 @@ LOCS = {
     "福岡": {"lat": 33.59, "lon": 130.4}, "那覇": {"lat": 26.21, "lon": 127.68}
 }
 
-# セッション状態の初期化
+# データの永続化設定（連打防止用）
 if "loc" not in st.session_state: st.session_state.loc = "広島"
 if "threshold" not in st.session_state: st.session_state.threshold = 30
 if "selected_day" not in st.session_state: st.session_state.selected_day = 0
@@ -36,7 +36,7 @@ if "time_morning" not in st.session_state: st.session_state.time_morning = dt.ti
 if "time_lunch" not in st.session_state: st.session_state.time_lunch = dt.time(12, 0)
 if "time_evening" not in st.session_state: st.session_state.time_evening = dt.time(18, 0)
 
-# 【重要】通知済み記録。これが連打を防ぎます
+# 【ここが重要！】通知済みを記録する辞書（アプリを開いている間保持）
 if "history" not in st.session_state:
     st.session_state.history = {"朝": False, "昼": False, "晩": False}
 
@@ -66,20 +66,20 @@ menu = st.sidebar.radio("Menu", ["🏠 ホーム", "⚙️ 設定"])
 if menu == "🏠 ホーム":
     st.markdown("<h2 style='text-align:center;'>RainCall+</h2>", unsafe_allow_html=True)
     
-    # --- 【通知ロジック：連打防止版】 ---
+    # --- 【通知制御ロジック】 ---
     now = dt.datetime.now().time()
     max_p_today = res["daily"]["precipitation_probability_max"][0]
     
-    # 降水確率がしきい値以上のときだけ判定
+    # 降水確率がしきい値を超えているときだけ実行
     if max_p_today >= st.session_state.threshold:
         for label, target_time in [("朝", st.session_state.time_morning), ("昼", st.session_state.time_lunch), ("晩", st.session_state.time_evening)]:
-            # 「設定時間を過ぎている」かつ「まだ今日この時間帯に送っていない」場合のみ送信
+            # 「今の時間が設定時刻を過ぎている」かつ「まだ送っていない」場合のみ
             if now >= target_time and not st.session_state.history[label]:
                 send_line_notification(max_p_today, st.session_state.loc, label)
-                st.session_state.history[label] = True # 送信済みとして記録！
-                st.success(f"✅ {label}の通知を送信しました")
+                st.session_state.history[label] = True # 送信済みに書き換える
+                st.success(f"✅ {label}の通知を送信しました。")
 
-    # メイン表示
+    # 今日の詳細
     idx = st.session_state.selected_day
     st.write(f"📅 **{res['daily']['time'][idx]} ({st.session_state.loc})**")
     c1, c2, c3 = st.columns(3)
@@ -87,15 +87,16 @@ if menu == "🏠 ホーム":
     c2.metric("降水確率", f"{res['daily']['precipitation_probability_max'][idx]}%")
     c3.metric("最低気温", f"{res['daily']['temperature_2m_min'][idx]}°")
 
-    # 24時間グラフ
+    # グラフ復活
+    st.write("📈 降水確率の推移")
     h_idx = idx * 24
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=[f"{i}h" for i in range(24)], y=res["hourly"]["precipitation_probability"][h_idx:h_idx+24], line=dict(color='#40E0D0', width=3), fill='tozeroy'))
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=180, font=dict(color="white"), margin=dict(l=0,r=0,t=10,b=0))
     st.plotly_chart(fig, use_container_width=True)
 
-    # 週間予報（温度も表示）
-    st.write("📅 週間予報 (タップで詳細)")
+    # 週間ボタン復活（気温も表示）
+    st.write("📅 週間予報 (タップで詳細に切り替え)")
     week_cols = st.columns(7)
     for i in range(7):
         with week_cols[i]:
@@ -104,6 +105,7 @@ if menu == "🏠 ホーム":
             t_max = res["daily"]["temperature_2m_max"][i]
             t_min = res["daily"]["temperature_2m_min"][i]
             p_max = res["daily"]["precipitation_probability_max"][i]
+            # ボタン内に情報を詰め込む
             if st.button(f"{day}日\n{icon}\n{t_max}/{t_min}\n{p_max}%", key=f"w{i}"):
                 st.session_state.selected_day = i
                 st.rerun()
@@ -111,15 +113,16 @@ if menu == "🏠 ホーム":
 else:
     # 設定画面
     st.markdown("### ⚙️ アプリ設定")
-    st.session_state.loc = st.selectbox("地域", list(LOCS.keys()))
+    st.session_state.loc = st.selectbox("地域を選択", list(LOCS.keys()))
     st.session_state.threshold = st.slider("通知しきい値(%)", 0, 100, st.session_state.threshold)
     st.write("---")
     st.write("🔔 **通知時間の設定**")
-    st.session_state.time_morning = st.time_input("朝", st.session_state.time_morning)
-    st.session_state.time_lunch = st.time_input("昼", st.session_state.time_lunch)
-    st.session_state.time_evening = st.time_input("晩", st.session_state.time_evening)
+    st.session_state.time_morning = st.time_input("朝のチェック時間", st.session_state.time_morning)
+    st.session_state.time_lunch = st.time_input("昼のチェック時間", st.session_state.time_lunch)
+    st.session_state.time_evening = st.time_input("晩のチェック時間", st.session_state.time_evening)
     
-    if st.button("通知済み記録をリセット（テスト用）"):
+    if st.button("通知済み記録をリセット"):
         st.session_state.history = {"朝": False, "昼": False, "晩": False}
-        st.success("リセットしました。次の設定時刻に1回だけ送られます。")
-
+        st.success("リセットしました。テストしたい場合はここを押してください。")
+    
+    
