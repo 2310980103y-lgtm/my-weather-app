@@ -1,11 +1,3 @@
-"""
-streamlit_app.py                      学籍番号：XXXXXX  氏名：XXXX XXXX  日付：2026-02-09
-
-【修正点】
-1. アプリ再起動時でも好みの設定になるよう、初期値を調整。
-2. 通知の連打と「朝昼同時送信」を完全に防ぐ最新ロジックを搭載。
-"""
-
 import datetime as dt
 import requests
 import streamlit as st
@@ -36,19 +28,28 @@ LOCS = {
     "福岡": {"lat": 33.59, "lon": 130.4}, "那覇": {"lat": 26.21, "lon": 127.68}
 }
 
-# --- 【重要】ここを書き換えれば、リセットされてもこの設定に戻ります ---
-if "loc" not in st.session_state: st.session_state.loc = "広島" # 地域
-if "threshold" not in st.session_state: st.session_state.threshold = 10 # しきい値
-if "selected_day" not in st.session_state: st.session_state.selected_day = 0
-if "time_morning" not in st.session_state: st.session_state.time_morning = dt.time(7, 0) # 朝の通知
-if "time_lunch" not in st.session_state: st.session_state.time_lunch = dt.time(12, 0) # 昼の通知
-if "time_evening" not in st.session_state: st.session_state.time_evening = dt.time(18, 0) # 晩の通知
+# --- 【★ここをあなたの好みに書き換えて保存してください★】 ---
+if "loc" not in st.session_state: 
+    st.session_state.loc = "広島"  # デフォルトの地域
 
-# 通知履歴（これは今日送ったかを覚える用）
+if "threshold" not in st.session_state: 
+    st.session_state.threshold = 0  # デフォルトのしきい値（0ならいつでも通知が来る）
+
+if "time_morning" not in st.session_state: 
+    st.session_state.time_morning = dt.time(7, 0)  # 朝のチェック時間
+
+if "time_lunch" not in st.session_state: 
+    st.session_state.time_lunch = dt.time(12, 0) # 昼のチェック時間
+
+if "time_evening" not in st.session_state: 
+    st.session_state.time_evening = dt.time(18, 0) # 晩のチェック時間
+
+# 共通で使用するセッション変数
+if "selected_day" not in st.session_state: st.session_state.selected_day = 0
 if "history" not in st.session_state:
     st.session_state.history = {"朝": False, "昼": False, "晩": False}
 
-# Open-Meteo API
+# APIデータ取得
 c = LOCS[st.session_state.loc]
 api_url = f"https://api.open-meteo.com/v1/forecast?latitude={c['lat']}&longitude={c['lon']}&hourly=precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia/Tokyo"
 res = requests.get(api_url).json()
@@ -60,7 +61,7 @@ def get_icon(code):
     if code <= 67: return "☔"
     return "⚡"
 
-# --- 2. 背景デザイン ---
+# --- 2. 画面デザイン ---
 w_code = res["daily"]["weather_code"][st.session_state.selected_day]
 bg = "https://images.unsplash.com/photo-1544933863-482c6cdcd5d1?w=1000"
 if w_code >= 51: bg = "https://images.unsplash.com/photo-1428592953211-077101b2021b?w=1000"
@@ -74,24 +75,21 @@ menu = st.sidebar.radio("メニュー", ["🏠 ホーム", "⚙️ 設定"])
 if menu == "🏠 ホーム":
     st.markdown("<h2 style='text-align:center;'>RainCall+</h2>", unsafe_allow_html=True)
 
-    # --- 【通知制御：重複送信を完全に防止】 ---
+    # 通知ロジック
     now = dt.datetime.now().time()
     max_p_today = res["daily"]["precipitation_probability_max"][0]
 
     if max_p_today >= st.session_state.threshold:
         schedule = [("朝", st.session_state.time_morning), ("昼", st.session_state.time_lunch), ("晩", st.session_state.time_evening)]
-        # 現在時刻を過ぎた通知候補を抽出
         passed = [(label, t) for label, t in schedule if now >= t]
         if passed:
-            # 過ぎた時間の中で「一番新しいもの」だけを1つ選ぶ
+            # 直近の時間帯を1つ選んで送信（重複防止）
             label, target_time = max(passed, key=lambda x: x[1])
-            # まだその時間帯に通知を送っていなければ送信
             if not st.session_state.history[label]:
                 send_line_notification(max_p_today, st.session_state.loc, label)
                 st.session_state.history[label] = True
                 st.success(f"✅ {label}の通知を送信しました。")
 
-    # 詳細予報表示
     idx = st.session_state.selected_day
     st.write(f"📅 **{res['daily']['time'][idx]} ({st.session_state.loc})**")
     c1, c2, c3 = st.columns(3)
@@ -99,7 +97,6 @@ if menu == "🏠 ホーム":
     c2.metric("降水確率", f"{res['daily']['precipitation_probability_max'][idx]}%")
     c3.metric("最低気温", f"{res['daily']['temperature_2m_min'][idx]}°")
 
-    # グラフ表示
     st.write("📈 降水確率の推移")
     h_idx = idx * 24
     fig = go.Figure()
@@ -107,7 +104,6 @@ if menu == "🏠 ホーム":
     fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=180, font=dict(color="white"), margin=dict(l=0,r=0,t=10,b=0))
     st.plotly_chart(fig, use_container_width=True)
 
-    # 週間ボタン
     st.write("📅 週間予報 (タップで詳細表示)")
     week_cols = st.columns(7)
     for i in range(7):
@@ -118,9 +114,8 @@ if menu == "🏠 ホーム":
                 st.session_state.selected_day = i
                 st.rerun()
 else:
-    # 設定画面
     st.markdown("### ⚙️ アプリ詳細設定")
-    st.session_state.loc = st.selectbox("予報地域", list(LOCS.keys()))
+    st.session_state.loc = st.selectbox("予報地域", list(LOCS.keys()), index=list(LOCS.keys()).index(st.session_state.loc))
     st.session_state.threshold = st.slider("通知を出す降水確率しきい値(%)", 0, 100, st.session_state.threshold)
     st.write("---")
     st.write("🔔 **定期通知の時刻設定**")
